@@ -1,5 +1,8 @@
 --[[
-GNU compiler collection toolchain (gcc, g++, gnu-binutils, GAS, ld, ...)
+Common code for *nix toolchains (GCC, LLVM)
+Here it's assumed only 2 such toolchains are existing.
+So the functions are like templates. The executed code is for GCC or LLVM depending on
+whether (selfid == "gcc") or not.
 
 requirements to toolchains
 1. compiler (c, c++ --> assembly or object code)
@@ -11,14 +14,14 @@ that boils down to {
 	to_obj = function(ctx, code, output) ...
 	to_bin = function(ctx, code, output) ...
 }
---]]
+]]
 
 require "io"
 require "os"
 local scbs = require "scbs/common"
 local base = require "scbs/base"
 
-local gcc = {}
+local unixtc = {}
 local debugprint = debugprint or print
 
 local CU_cpp = {
@@ -27,18 +30,72 @@ local CU_cpp = {
 	cc = true
 }
 
-function gcc.init_cache(obj)
+-- @todo move to toolchains/common
+local function capture(cmd)
+	local handle = io.popen(cmd)
+	if not handle then
+		print("scbs: command failed: " .. cmd)
+		return nil
+	end
+
+	local id = handle:read("*all")
+	local res = handle:close()
+	return res and id;
+end
+
+function unixtc.init_cache(obj, selfid)
 	if not obj.cache then
 		obj.cache = {}
 	end
-	if not obj.cache.gcc then
-		obj.cache.gcc = {}
+	if not obj.cache[selfid] then
+		obj.cache[selfid] = {}
 	end
-	return obj.cache.gcc
+	return obj.cache[selfid]
 end
 
-local function check_c(target)
-	local cache = target.cache.gcc
+-- return the version if found
+local function check_cmd_cc(selfid)
+	local prog = selfid == "gcc" and "gcc" or "clang";
+	local id = capture(prog.." --version")
+	if id == nil or #id == 0 then
+		return nil
+	end
+	id = id:split("\n", 1)[1]:split(" ")
+	local ver = id[1] == prog and id[3];
+	if not ver then return end
+	debugprint("Found "..prog.." version "..ver);
+	return ver
+end
+
+local function check_cmd_cxx(selfid)
+	local prog = selfid == "gcc" and "g++" or "clang++";
+	local id = capture(prog.." --version")
+	if id == nil or #id == 0 then return end
+	id = id:split("\n", 1)[1]:split(" ")
+	local chk = id[1] == (selfid == "gcc" and "g++" or "clang");
+	local ver = chk and id[3];
+	if not ver then return end
+	debugprint("Found "..prog.." version "..ver);
+	return ver
+end
+
+function unixtc.check(conf, selfid)
+	local progs = selfid == "gcc" and {cc="gcc", cxx="g++"} or {cc="clang", cxx="clang++"}
+	local cache = unixtc.init_cache(conf, selfid)
+	cache.versions = cache.versions or {}
+
+	local ver = check_cmd_cc(selfid)
+	if not ver then return end
+	cache.versions[progs.cc] = ver
+
+	ver = check_cmd_cxx(selfid)
+	if not ver then return end
+	cache.versions[progs.cxx] = ver
+	return cache.versions
+end
+
+local function check_c(target, selfid)
+	local cache = target.cache[selfid]
 	if not cache.c_ver then
 		cache.c_ver = false
 		for k, v in pairs(target.languages) do
@@ -51,8 +108,8 @@ local function check_c(target)
 	return cache.c_ver
 end
 
-local function check_cxx(target)
-	local cache = target.cache.gcc
+local function check_cxx(target, selfid)
+	local cache = target.cache[selfid]
 	if not cache.cxx_ver then
 		cache.cxx_ver = false
 		for k, v in pairs(target.languages) do
@@ -65,22 +122,22 @@ local function check_cxx(target)
 	return cache.cxx_ver
 end
 
-function gcc.to_asm(target, code, output)
+function unixtc.to_asm(target, code, output, selfid)
 	local ext = scbs.getext(code)
 	if not ext then
 		print("failed to get extension from " .. code)
 		return 1
 	end
 
-	local cache = gcc.init_cache(target)
-	check_c(target)
-	check_cxx(target)
+	local cache = unixtc.init_cache(target)
+	check_c(target, selfid)
+	check_cxx(target, selfid)
 
 	local prog
 	if cache.cxx_ver and CU_cpp[ext] then
-		prog = "g++"
+		prog = selfid == "gcc" and "g++" or "clang++";
 	elseif cache.c_ver and ext == "c" then
-		prog = "gcc"
+		prog = selfid == "gcc" and "gcc" or "clang";
 	else
 		print("wrong extension: " .. ext)
 		return 1
@@ -97,22 +154,22 @@ function gcc.to_asm(target, code, output)
 	return 0
 end
 
-function gcc.to_obj(target, code, output)
+function unixtc.to_obj(target, code, output, selfid)
 	local ext = scbs.getext(code)
 	if not ext then
 		print("failed to get extension from " .. code)
 		return 1
 	end
 
-	local cache = gcc.init_cache(target)
-	check_c(target)
-	check_cxx(target)
+	local cache = unixtc.init_cache(target, selfid)
+	check_c(target, selfid)
+	check_cxx(target, selfid)
 
 	local handle;
 	if ext == ".s" or ext == ".asm"
 	then
 		-- if the assembly was compiled from C++ code, it should be later linked with C++ libraries
-		-- GCC usually puts the line of look `.file "code.cpp"` or `.file "code.c"` so detect extension from here
+		-- gcc and clang usually put the line of look `.file "code.cpp"` or `.file "code.c"` so detect extension from here
 		handle = io.open(code)
 		if not handle then
 			print("failed to open file " .. code)
@@ -152,9 +209,9 @@ function gcc.to_obj(target, code, output)
 
 	local prog, std;
 	if cache.c_ver and ext == "c" then
-		prog, std = "gcc", cache.c_ver;
+		prog, std = selfid == "gcc" and "gcc" or "clang", cache.c_ver;
 	elseif cache.cxx_ver and CU_cpp[ext] then
-		prog, std = "g++", cache.cxx_ver;
+		prog, std = selfid == "gcc" and "g++" or "clang++", cache.cxx_ver;
 	else
 		print("wrong extension: " .. ext)
 		return 1
@@ -178,10 +235,10 @@ function gcc.to_obj(target, code, output)
 end
 
 -- add some features like 'make DLL, executable, static library...'
-function gcc.to_bin(target, code, output)
-	local cache = gcc.init_cache(target)
-	check_c(target)
-	check_cxx(target)
+function unixtc.to_bin(target, code, output, selfid)
+	local cache = unixtc.init_cache(target, selfid)
+	check_c(target, selfid)
+	check_cxx(target, selfid)
 
 	local is_cxx = false
 	for i, v in ipairs(code) do
@@ -215,8 +272,9 @@ function gcc.to_bin(target, code, output)
 	end
 
 	local prog; if not is_cxx
-	then prog = "gcc"
-	else prog = "g++" end
+	then prog = selfid == "gcc" and "gcc" or "clang";
+	else prog = selfid == "gcc" and "g++" or "clang++";
+	end
 
 	local res, cmd;
 	target.bintype = target.bintype or base.binType.app;
@@ -259,8 +317,8 @@ end
 
 -- todo: add feature for private includes for each source file
 -- also necessary for cmake compat
-function gcc.build(proj, target)
-	local cache = gcc.init_cache(proj)
+function unixtc.build(proj, target, selfid)
+	local cache = unixtc.init_cache(proj, selfid)
 	cache.built = cache.built or {}
 	if cache.built[target] then
 		debugprint("already built: " .. target)
@@ -270,17 +328,17 @@ function gcc.build(proj, target)
 	local objects = {}
 	for k, v in pairs(target.sources) do
 		local objname = v .. ".o"
-		if gcc.to_obj(target, v, objname) ~= 0 then
+		if unixtc.to_obj(target, v, objname, selfid) ~= 0 then
 			return 1
 		end
 		table.insert(objects, objname)
 	end
-	local res = gcc.to_bin(target, objects, "prog")
+	local res = unixtc.to_bin(target, objects, "prog", selfid)
 	if res ~= 0 then
 		return res
 	end
 	cache.built[target] = true
 	return 0
-end 
+end
 
-return gcc
+return unixtc
