@@ -1,0 +1,13 @@
+bin/
+obj/
+ext/*
+
+.test
+.cache
+.junk
+.vscode
+.clangd
+scbsconf.lua
+
+*.o
+*.obj
