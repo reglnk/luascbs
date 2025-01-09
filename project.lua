@@ -1,68 +1,40 @@
 require "io"
 require "os"
-local ffi = require "ffi"
-local lfs = require "lfs"
-local fsutil = require "scbs/fsutil"
+require "scbs/lib"
 
-local proj = project {}
+local proj = scbs.project {}
+proj.toolchains = {"llvm", "gcc"}
 
---[[ proj.toolchains = {
-	llvm = "14.0",
-	gcc = "11.1",
-	msvc = {{"v141", "v143"}}
-} --]]
+scbs.VERBOSITY = 4
 
---[[ or
+local lj_dir = "/s/Projects/luarjit2/";
 
-proj.toolchains = {
-	llvm = {
-		versions = {
-			["clang"] = "17.0",
-			["clang++"] = "17.0",
-			["ld.lld"] = "17.0.4"
-		}
-	},
-	gcc = {
-		versions = {
-			["gcc"] = "11.1",
-			["g++"] = "12.1",
-			["ld"] = "2.38"
-		}
-	},
-	msvc = {{"v141", "v143"}}
-}
+local act_luajit = scbs.action (
+	function(self, proj)
+		proj.data.luajit_libname = scbs.lib.find(lj_dir .. "src", "libluarjit");
+	end
+)
 
---]]
-
-local lj_dir = "ext/LuaJIT-2.1/";
-
-local act_luajit = action {
-	fn = function(self, proj)
-		local files = fsutil.find(lj_dir.."src", "libluajit");
-		assert(#files == 1);
-		proj.data.luajit_libname = files[1]
-	end,
-}
-
-local tgt_main = table {
-	languages = table {"c++20"},
-	sources = table {
+local tgt_main = {
+	output_name = "scbs",
+	languages = {"c++20"},
+	sources = {
 		"source/luascbs/main.cpp"
 	},
-	incpaths = table {
+	incpaths = {
 		"include",
 		lj_dir .. "src"
 	},
-	linklibs = table {},
-	libpaths = table {lj_dir .. "src"},
-	deps = table {
+	linklibs = {},
+	libpaths = {lj_dir .. "src"},
+	deps = {
 		act_luajit,
-		action {
-			fn = function(self, proj)
+		scbs.action (
+			function(self, proj)
 				local libname = proj.data.luajit_libname;
-				proj.targets.main.linklibs = table {":" .. libname};
+				proj.targets.main.linklibs = {":" .. libname};
 			end
-		}
+		)
 	}
 };
 

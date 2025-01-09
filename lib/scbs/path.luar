@@ -1,0 +1,43 @@
+
+scbs = scbs or {};
+scbs.path = {};
+local M = scbs.path;
+
+// @todo support of paths like "\\?\c:\program files..." and "\\.\f:\..."
+
+fn<string> M.to_unix(path)
+{
+    path = path:gsub('\\', '/');
+    if (#path >= 2 and path:sub(2, 2) == ':')
+    {
+        if (#path > 2 and path:sub(3, 3) ~= '/')
+            error("wrong format: " .. path);
+        local vol = path:sub(1, 1);
+        path = '/'.. vol:lower() .. path:sub(3);
+    }
+    return path
+}
+
+fn<string> M.to_windows(path)
+{
+    path = path:gsub('/', '\\');
+    if (#path > 2 and path:sub(1, 1) == '\\')
+    {
+        local b, e = path:find('[^\\/]+', 2);
+        if (not b)
+            error("wrong format: " .. path);
+        local vol = path:sub(b, e);
+        path = vol:upper() ..":\\".. path:sub(e + 2);
+    }
+    return path
+}
+
+fn<string> M.to_native(path, ctx)
+{
+    ctx =~ or scbs;
+    if (ctx.OS == "win32")
+        return M.to_windows(path);
+    return M.to_unix(path);
+}
+
+return M;

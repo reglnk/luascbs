@@ -1,0 +1,92 @@
+// Finding packages.
+// Should include default finder for libraries like libluarjit-5.1.so.2 with such API:
+[//[
+local l = find_package(fn(ctx) {
+	ctx.libs = {find_library(ctx.projdir, "luarjit")};
+	check_file(ctx.projdir .. "src/lua.hpp");
+});
+]//]
+// and adapters to do search of packages custom versioning systems, custom system libpaths, custom dll name formats etc.
+// added by reglnk on 2024-11-13 approx. at 04:20
+
+[//[
+Package is a set of executables, libraries and/or other stuff. Each package has its name, unique to luascbs.
+So, a name for any package that contains 1 single library should be prefixed with 'lib'.
+A library is a set of headers and/or compilable sources and/or binaries (shared/static objects) and/or scripts.
+Also may include documentation, makefiles and other utility.
+
+For example:
+
+libglfw-bin (version is not a part of name) consists of:
+- libglfw-headers
+- libglfw-bin-nh [no headers]
+- an adapter stating paths of these libs and headers (project.lua)
+
+libglfw consists of:
+- headers+sources, because libglfw-headers may have changed layout of files
+- an adapter to build it with luascbs (project.lua)
+
+luajit-bin consists of:
+- libluajit-bin-nh
+- luajit executable (dynamically linked)
+
+Note that any package without 'lib' suffix should not have headers or importable scripts by default (or by 100%).
+
+luajit-bin-ns (read as 'not shared'):
+- luajit executable (static linkage)
+
+A package with suffix -bin also may be statically linked. And -ns packages may be really useless...
+
+libluajit-bin:
+- libluajit-headers
+- libluajit-bin-nh
+
+libluajit-src:
+- headers+sources
+- adapter
+
+Due to that, a package/library name should be easily retrieved by executing the project.lua file during search of packages,
+including names of all subpackages if some package provides more than one.
+]//]
+
+local lfs = require "lfs";
+require "luar/except";
+
+scbs =~ or {};
+scbs.package = {};
+
+local pkg = scbs.package;
+
+// @todo
+fn pkg.find(string name)
+{
+	// search for any find script in luascbs/find/ dir, and execute it
+	local finder;
+	try <- fn() {
+		// keep in mind, it will be executed in any format of lua/luar
+		// while being found in builtin or relative local directory
+		// and placed into global state as a found package for later reuse
+		finder = require("scbs/find/" .. name);
+		
+		// @todo also try finding upper-level packages, like 'libluajit-bin' instead of 'libluajit-headers'
+		// @todo ensure that relative local directory is preferred regardless of script format
+	}
+	catch fn(x) {
+		scbs:vprint("findscript for package '".. name .."' not found");
+		scbs:debugprint("stack trace: ".. x);
+		
+		// fall back to default find script
+		// ...
+	}
+	if (not finder)
+		return nil;
+	
+	local proj = finder();
+	
+	// here should be used some scbs core function that goes through project tree and checks that it contains required library
+	// ...
+	
+	return proj;
+}
+
+return pkg;

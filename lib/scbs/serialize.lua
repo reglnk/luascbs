@@ -1,3 +1,6 @@
+-- Created nearly 30 Mar 2024 at 19:12:51
+-- by reglnk
+
 local serialize = {}
 
 local function escape(s)

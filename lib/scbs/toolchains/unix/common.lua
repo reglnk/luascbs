@@ -1,4 +1,7 @@
 --[[
+Created 30 Mar 2024 or earlier
+by reglnk
+
 Common code for *nix toolchains (GCC, LLVM)
 Here it's assumed only 2 such toolchains are existing.
 So the functions are like templates. The executed code is for GCC or LLVM depending on
@@ -18,11 +21,10 @@ that boils down to {
 
 require "io"
 require "os"
-local scbs = require "scbs/common"
-local base = require "scbs/base"
+local scbs = require "scbs/base"
+local path = require "scbs/path"
 
 local unixtc = {}
-local debugprint = debugprint or print
 
 local CU_cpp = {
 	cpp = true,
@@ -37,7 +39,6 @@ local function capture(cmd)
 		print("scbs: command failed: " .. cmd)
 		return nil
 	end
-
 	local id = handle:read("*all")
 	local res = handle:close()
 	return res and id;
@@ -54,43 +55,47 @@ function unixtc.init_cache(obj, selfid)
 end
 
 -- return the version if found
-local function check_cmd_cc(selfid)
-	local prog = selfid == "gcc" and "gcc" or "clang";
-	local id = capture(prog.." --version")
-	if id == nil or #id == 0 then
-		return nil
+local function checkcmd_gcc_clang(selfid, ex, progid)
+	local cap = capture(ex .." --version");
+	if (cap == nil or #cap == 0)
+	then return
 	end
-	id = id:split("\n", 1)[1]:split(" ")
-	local ver = id[1] == prog and id[3];
-	if not ver then return end
-	debugprint("Found "..prog.." version "..ver);
-	return ver
+	cap = cap:split('\n', 1)[1] -- only first string is needed
+		:gsub("%b()", "")       -- "gcc (SUSE Linux) 13.3.1 20240807" -> "gcc  13.3.1 20240807"
+		:gsub("version", "")    -- "clang version 18.1.8" -> "clang  18.1.8"
+		:gsub(" +", " ")        -- "clang  18.1.8" -> "clang 18.1.8"
+		:split(' ');
+	
+	if (#cap < 2 or cap[1] ~= progid)
+	then return
+	end
+	scbs:vprint("Found ".. ex .." version ".. cap[2]);
+	return cap[2];
 end
 
-local function check_cmd_cxx(selfid)
-	local prog = selfid == "gcc" and "g++" or "clang++";
-	local id = capture(prog.." --version")
-	if id == nil or #id == 0 then return end
-	id = id:split("\n", 1)[1]:split(" ")
-	local chk = id[1] == (selfid == "gcc" and "g++" or "clang");
-	local ver = chk and id[3];
-	if not ver then return end
-	debugprint("Found "..prog.." version "..ver);
-	return ver
+local function checkcmd_cc(selfid)
+	local ex = selfid == "gcc" and "gcc" or "clang";
+	return checkcmd_gcc_clang(selfid, ex, ex);
+end
+
+local function checkcmd_cxx(selfid)
+	local ex = selfid == "gcc" and "g++" or "clang++";
+	local id = selfid == "gcc" and "g++" or "clang";
+	return checkcmd_gcc_clang(selfid, ex, id);
 end
 
 function unixtc.check(conf, selfid)
 	local progs = selfid == "gcc" and {cc="gcc", cxx="g++"} or {cc="clang", cxx="clang++"}
 	local cache = unixtc.init_cache(conf, selfid)
 	cache.versions = cache.versions or {}
-
-	local ver = check_cmd_cc(selfid)
+	
+	local ver = checkcmd_cc(selfid)
 	if not ver then return end
 	cache.versions[progs.cc] = ver
-
-	ver = check_cmd_cxx(selfid)
+	ver = checkcmd_cxx(selfid)
 	if not ver then return end
 	cache.versions[progs.cxx] = ver
+	
 	return cache.versions
 end
 
@@ -123,16 +128,15 @@ local function check_cxx(target, selfid)
 end
 
 function unixtc.to_asm(target, code, output, selfid)
-	local ext = scbs.getext(code)
+--[
+	local ext = scbs.getext(code);
 	if not ext then
 		print("failed to get extension from " .. code)
 		return 1
 	end
-
 	local cache = unixtc.init_cache(target)
 	check_c(target, selfid)
 	check_cxx(target, selfid)
-
 	local prog
 	if cache.cxx_ver and CU_cpp[ext] then
 		prog = selfid == "gcc" and "g++" or "clang++";
@@ -142,12 +146,10 @@ function unixtc.to_asm(target, code, output, selfid)
 		print("wrong extension: " .. ext)
 		return 1
 	end
-
 	-- @todo return command instead of executing it
 	-- @todo first make shell script out of project
 	local cmd = prog .. ' ' .. code .. " -S -o " .. output;
 	local res = os.execute(cmd);
-
 	if res ~= 0 then
 		print("command failed: " .. cmd .. "\nreturn code: " .. res)
 	end
@@ -155,6 +157,7 @@ function unixtc.to_asm(target, code, output, selfid)
 end
 
 function unixtc.to_obj(target, code, output, selfid)
+--[
 	local ext = scbs.getext(code)
 	if not ext then
 		print("failed to get extension from " .. code)
@@ -185,7 +188,7 @@ function unixtc.to_obj(target, code, output, selfid)
 		until line == "";
 
 		if line == "" then
-			debugprint("assuming C-compatible assembly: " .. code)
+			scbs:debugprint("assuming C-compatible assembly: " .. code)
 			ext = "c"
 		else
 			local badfmt = "bad assembly format: " .. code
@@ -203,7 +206,7 @@ function unixtc.to_obj(target, code, output, selfid)
 
 			local filename = string.sub(line, b, e)
 			ext = scbs.getext(filename)
-			debugprint("got extension from .file: " .. ext)
+			scbs:debugprint("got extension from .file: " .. ext)
 		end
 	end
 
@@ -218,24 +221,25 @@ function unixtc.to_obj(target, code, output, selfid)
 	end
 
 	local cmd = table {prog, "-c", "-o", "\"" .. output .. "\"", "-std=" .. std}
-	if target.bintype == base.binType.shared then
+	if target.bintype == scbs.binType.shared then
 		cmd:insert("-fPIC");
 	end
 	cmd:insert(code);
 	for k, v in pairs(target.incpaths) do
-		table.insert(cmd, "-I\"" .. v .. "\"")
+		table.insert(cmd, "-I\"" .. path.to_native(v) .. "\"")
 	end
 	cmd = table.concat(cmd, ' ')
-	debugprint("executing: " .. cmd);
+	scbs:vprint("executing: " .. cmd);
 	local res = os.execute(cmd);
 	if res ~= 0 then
-		print("command failed: " .. cmd .. "\nreturn code: " .. res)
+		scbs:error("command failed (code: ".. res .."): ".. cmd)
 	end
 	return 0
 end
 
 -- add some features like 'make DLL, executable, static library...'
 function unixtc.to_bin(target, code, output, selfid)
+--[
 	local cache = unixtc.init_cache(target, selfid)
 	check_c(target, selfid)
 	check_cxx(target, selfid)
@@ -244,73 +248,69 @@ function unixtc.to_bin(target, code, output, selfid)
 	for i, v in ipairs(code) do
 		local ext, base = scbs.getext(v, true)
 		if not (base and #base ~= 0) then
-			print("failed to get extension from " .. v)
+			scbs:error("failed to get extension from " .. v)
 			return 1
 		end
 		if not (ext == "o" or ext == "obj") then
-			debugprint("warning: wrong extension: '" .. v .. "'")
+			scbs:vprint("warning: wrong extension: '" .. v .. "'")
 		end
 		local ext = scbs.getext(base)
 		if not ext then
-			print("failed to get extension from " .. base)
+			scbs:error("failed to get extension from " .. base)
 			return 1
 		end
 		if CU_cpp[ext] then
 			is_cxx = true
 		elseif ext ~= "c" then
-			debugprint("wrong extension: '" .. base .. "'")
+			scbs:error("wrong extension: '" .. base .. "'")
 			return 1
 		end
 	end
 
 	if (not cache.c_ver) and not is_cxx then
-		print("C objects are not allowed")
+		scbs:error("not a C++ object: `".. code .."'")
 		return 1
 	elseif (not cache.cxx_ver) and is_cxx then
-		print("C++ objects are not allowed")
+		scbs:error("not a C object: `".. code .."'")
 		return 1
 	end
 
-	local prog; if not is_cxx
-	then prog = selfid == "gcc" and "gcc" or "clang";
-	else prog = selfid == "gcc" and "g++" or "clang++";
+	local prog; if is_cxx
+	then prog = selfid == "gcc" and "g++" or "clang++";
+	else prog = selfid == "gcc" and "gcc" or "clang";
 	end
 
 	local res, cmd;
-	target.bintype = target.bintype or base.binType.app;
+	target.bintype = target.bintype or scbs.binType.app;
 	
-	if target.bintype == base.binType.app
+	if target.bintype == scbs.binType.app
 	then
 		if SOURCE_OS == "win32" then
 			output = output .. ".exe"
 		end
 		cmd = table {prog, "-o", "\"" .. output .. "\""};
-	elseif target.bintype == base.binType.shared
+	elseif target.bintype == scbs.binType.shared
 	then
 		cmd = table {prog, "-o", "\"" .. output .. "\"", "-shared"};
-	elseif target.bintype == base.binType.static
+	elseif target.bintype == scbs.binType.static
 	then
-		error("static libs are not yet supported");
+		scbs:error("static libs are not yet supported");
 	else
-		error("unknown target binary type: " .. tostring(target.bintype));
+		scbs:error("unknown target binary type: " .. tostring(target.bintype));
 	end
 	table.move(code, 1, #code, #cmd + 1, cmd);
 	for i, v in ipairs(target.linklibs or {}) do
 		table.insert(cmd, "-l" .. v)
 	end
 	for i, v in ipairs(target.libpaths or {}) do
-		table.insert(cmd, "-L\"" .. v .. "\"")
+		table.insert(cmd, "-L\"" .. path.to_native(v) .. "\"")
 	end
 	
 	cmd = table.concat(cmd, " ")
-	debugprint("executing: " .. cmd)
+	scbs:vprint("executing: " .. cmd)
 	res = os.execute(cmd)
 	if res ~= 0 then
-		if debugprint ~= print then
-			print("command failed: " .. cmd .. "\nexit code: " .. res)
-		else
-			print("exit code: " .. res)
-		end
+		scbs:error("command failed (code: ".. res .."): ".. cmd)
 	end
 	return 0
 end
@@ -318,26 +318,29 @@ end
 -- todo: add feature for private includes for each source file
 -- also necessary for cmake compat
 function unixtc.build(proj, target, selfid)
-	local cache = unixtc.init_cache(proj, selfid)
-	cache.built = cache.built or {}
-	if cache.built[target] then
-		debugprint("already built: " .. target)
+--[
+	local cache = unixtc.init_cache(proj, selfid);
+	cache.built =
+	cache.built or {};
+	if cache.built[target]
+	then
+		scbs:debugprint("already built: " .. target)
 		return 0
 	end
-	
 	local objects = {}
-	for k, v in pairs(target.sources) do
+	for k, v in pairs(target.sources)
+	do
 		local objname = v .. ".o"
-		if unixtc.to_obj(target, v, objname, selfid) ~= 0 then
-			return 1
+		if unixtc.to_obj(target, v, objname, selfid) ~= 0
+			then return 1
 		end
 		table.insert(objects, objname)
 	end
-	local res = unixtc.to_bin(target, objects, "prog", selfid)
-	if res ~= 0 then
-		return res
+	local res = unixtc.to_bin(target, objects, "prog", selfid);
+	if res ~= 0
+		then return res
 	end
-	cache.built[target] = true
+	cache.built[target] = true;
 	return 0
 end
 

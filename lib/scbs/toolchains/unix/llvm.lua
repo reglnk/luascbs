@@ -1,4 +1,7 @@
 --[[
+Created 30 Mar 2024 at 22:14:54 or earlier
+by reglnk
+
 LLVM on *nix or LLVM-mingw on Windows (clang, clang++, lld...)
 Not to be confused with LLVM for Windows, with clang-cl replacing MSVC
 (that thing would be called llvm_win)

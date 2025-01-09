@@ -11,3 +11,4 @@ scbsconf.lua
 
 *.o
 *.obj
+*.kate-swp

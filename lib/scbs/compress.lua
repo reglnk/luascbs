@@ -1,3 +1,5 @@
+-- Created nearly 29 Mar 2024 at 23:55:43
+-- by reglnk
 
 -- squeeze all whitespace and delete comments
 -- so that user can format the code, add comments, etc. without rebuilding

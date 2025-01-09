@@ -1,4 +1,7 @@
 --[[
+Created 30 Mar 2024 at 22:14:37 or earlier
+by reglnk
+
 GNU compiler collection toolchain (gcc, g++, gnu-binutils, GAS, ld, ...)
 so, either GCC at *nix system or MinGW
 ]]

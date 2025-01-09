@@ -1,3 +1,14 @@
+--[[
+@todo
+luascbs may be used as library itself.
+So it's reasonable to remove these modifications to standard library in favor of
+making them available as lua functions and also as Luar operators, like
+
+local lst = "my string" split (delim, limit);
+local sym = "my string" at 0;
+local subtab = {1, 2, 3, 4, 5} sub (2, 4);
+local copy = subtab clone();
+]]
 
 function string.split(self, delim, limit)
 	local arr = {}
@@ -29,4 +40,11 @@ function table.sub(self, b, e)
 		t:insert(self[i])
 	end
 	return t
+end
+
+function table.clone(self)
+	local t = {}
+	for k, v in pairs(self) do
+		t[k] = v
+	end
 end

@@ -555,6 +555,14 @@ if OS == "Windows" then
     end
     
     function _M.dir(path)
+        if path:sub(1, 1) == '/' then
+            local b, e = path:find('[^\\/]+', 2)
+            if not b then
+                error("wrong format: "..path)
+            end
+            local vol = path:sub(b, e)
+            path = vol..":\\"..path:sub(e + 2)
+        end
         if _M.unicode then
             return _M.wdir(path)
         else

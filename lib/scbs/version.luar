@@ -1,0 +1,13 @@
+// A library for describing and comparing versions.
+// Created by reglnk on 2024-11-12 17:18
+
+require "scbs/util"
+
+scbs = scbs or {}
+scbs.ver = {}
+local ver = scbs.ver
+
+fn<table> ver.parse(string text) {
+	local tab = text split('.');
+	if
+}

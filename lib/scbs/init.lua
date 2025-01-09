@@ -6,11 +6,10 @@ local serialize = require "scbs/serialize"
 
 require "io"
 require "scbs/util"
-local scbs = require "scbs/common"
-local base = require "scbs/base"
-scbs.globalize(base);
+require "scbs/base"
 
 local function save_config(conf, dir)
+--[
 	dir = dir or ".";
 	local fd = io.open(dir .. "/scbsconf.lua", "w")
 	if not fd then return false end
@@ -28,14 +27,12 @@ local function load_config(dir)
 end
 
 local function generate_config(proj, toolchain_id)
-	proj.conf = proj.conf or {}
-	local conf = proj.conf
-	conf.
+--[
+	local conf = proj.conf or {}; proj.conf = conf
 	if toolchain_id then
 		if not proj.toolchains[toolchain_id] then
 			print("warning: the project does not support " .. toolchain_id)
 		end
-		
 		local versions = tc_check(proj, id);
 		if not versions then
 			error("toolchain " .. id .. " is missing or incomplete")
@@ -46,14 +43,25 @@ local function generate_config(proj, toolchain_id)
 	else
 		local sel = proj.toolchains
 		if (not sel) or #sel == 0 then
-			sel = tc_all
+			sel = {} -- add all of them in undefined order
+			for k, v in pairs(tc_all) do
+				table.insert(sel, {id = k})
+			end
+		else
+			for k, v in pairs(sel) do
+				if type(v) == "string" then
+					sel[k] = {id = v}
+				end
+			end
 		end
+		assert(#sel ~= 0);
+		
 		for k, v in pairs(sel) do
-			print('checking ', k);
-			local versions = tc_check(proj, k)
+			print('checking ', v.id);
+			local versions = tc_check(proj, v.id)
 			if versions then
 				-- todo: check versions for compatibility
-				conf.toolchain = k
+				conf.toolchain = v.id
 				conf.versions = versions
 				break
 			end
@@ -71,15 +79,15 @@ local actionType = {
 	export = {}
 }
 
-local function parse_args(args)
-	local needs_arg = function(key)
-		; -- @stopped here
-	end
-	local opt = {}
-	for i, v in ipairs(args) do
-		if v.at(1) == "-" then
-	end
-end
+-- local function parse_args(args)
+-- 	local needs_arg = function(key)
+-- 		; -- @stopped here
+-- 	end
+-- 	local opt = {}
+-- 	for i, v in ipairs(args) do
+-- 		if v.at(1) == "-" then
+-- 	end
+-- end
 
 local function runconfig(proj, args)
 	local conf = load_config()
@@ -89,7 +97,8 @@ local function runconfig(proj, args)
 	end
 end
 
-local function runbuild(prog, args)
+local function runbuild(proj, args)
+--[
 	local conf = load_config()
 	if not conf then
 		conf = generate_config(proj, nil)
@@ -115,6 +124,7 @@ local scenarios = {
 };
 
 function scbsmain(proj, args)
+--[
 	local action_sel = {
 		config = actionType.config,
 		c = actionType.config,
@@ -130,5 +140,5 @@ function scbsmain(proj, args)
 		"Default action is config."-- Call a subcommand with --help for more info"
 	);
 	return 1 end
-	return scenarios[action](args:sub(2));
+	return scenarios[action](proj, args[2]);
 end
