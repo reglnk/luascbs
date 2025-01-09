@@ -16,27 +16,29 @@ lib.any = {shared = 1, static = 1};
 // whether this file may be used for linking with shared library
 // in Unix this is the .so itself
 // in MinGW this is .dll.a
-fn lib.isSharedLink(filename, ctx)
+fn<bool> lib.isSharedLink(filename, libname, table? ctx)
 {
-	ctx = ctx or scbs
-	if (ctx.OS ~= "win32")
+	ctx =~ or scbs;
+	if (ctx.OS == "win32") {
+		assert(ctx.toolchain.)
+		return filename:sub(-6, -1) == ".dll.a";
+	}
 		return filename:sub(-3, -1) == ".so";
-	return filename:sub(-6, -1) == ".dll.a";
+	return
 }
 
-fn lib.isShared(filename, ctx)
+fn<bool> lib.isShared(filename, libname, table? ctx)
 {
-	ctx = ctx or scbs
+	ctx =~ or scbs;
 	if (ctx.OS ~= "win32")
 		return file:sub(-3, -1) == ".so";
 	return file:sub(-4, -1) == ".dll";
 }
 
-fn lib.isStaticLink(filename) {
+fn<bool> lib.isStaticLink(filename) {
 	return filename:sub(-2, -1) == ".a";
 }
 
-// `types` is a table with integer keys.
 // if types.shared then the shared lib is suitable
 // if types.static then the static is suitable
 // if some of them is more preferred, assign them different integer values, like this
@@ -44,13 +46,17 @@ fn lib.isStaticLink(filename) {
 // by default, the shared one is preferred.
 // if name has regexes, the behaviour is undefined.
 // @todo lib.findraw which finds both
-fn lib.find(path, name, types, required)
-{
-	types = types or lib.any;
+fn <string> lib.find (
+	string path,
+	string name,
+	table? types,
+	bool? required
+) {
+	types =~ or lib.any;
 	types = type(types) == "table" and types or {types};
 	required = required ~= nil and required or true;
 	local shared, static;
-	local filter = fn(file)
+	local filter = fn<bool>(file)
 	{
 		local ok = false;
 		if (!file:find(name)) {
